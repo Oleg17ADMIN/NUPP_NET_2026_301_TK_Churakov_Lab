@@ -1,8 +1,12 @@
-﻿using System;
+﻿using LibrarySystem.Common;
+using LibrarySystem.Infrastructure;
+using LibrarySystem.Infrastructure.Models;
+using LibrarySystem.Infrastructure.Repositories;
+using LibrarySystem.Infrastructure.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using LibrarySystem.Common;
 
 namespace LibrarySystem.ConsoleApp
 {
@@ -10,59 +14,91 @@ namespace LibrarySystem.ConsoleApp
     {
         static async Task Main(string[] args)
         {
-            // Налаштування кодування для української мови (як ми робили в Лабі 1)
+            // Налаштування кодування для коректного виводу української мови
             Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-            // 1. Створюємо екземпляр нашого асинхронного сервісу для книг
-            var bookService = new LibraryServiceAsync<Book>();
+            Console.WriteLine("--- Робота з базою даних SQLite (NUPP Lab) ---");
 
-            Console.WriteLine("--- Старт багатопотокового створення даних ---");
-
-            // 2. БАГАТОПОТОКОВІСТЬ: Створюємо 1000 книг одночасно
-            // Parallel.For розпаралелює задачу на всі ядра вашого процесора
-            List<Task> tasks = new List<Task>();
-            for (int i = 0; i < 1000; i++)
+            try
             {
-                tasks.Add(bookService.CreateAsync(Book.CreateNew())); // Використовуємо твій метод CreateNew
+                // 1. Ініціалізація контексту
+                using var context = new LibraryContext();
+
+                // Гарантуємо, що база даних створена
+                Console.WriteLine("Перевірка підключення до бази...");
+                await context.Database.EnsureCreatedAsync();
+                Console.WriteLine("База готова.");
+
+                // 2. Ініціалізація сервісів
+                var bookRepository = new Repository<BookModel>(context);
+                var bookService = new LibraryServiceAsync<BookModel>(bookRepository, context);
+
+                // 3. Перевірка наявності даних
+                var allExisting = await bookService.ReadAllAsync();
+
+                if (!allExisting.Any())
+                {
+                    Console.WriteLine("База порожня. Створюємо тестові дані...");
+
+                    // Створюємо видавця (батьківський об'єкт)
+                    var publisher = new PublisherModel
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = "Видавництво Полтавська Політехніка"
+                    };
+
+                    await context.Set<PublisherModel>().AddAsync(publisher);
+                    await context.SaveChangesAsync();
+                    Console.WriteLine($"Створено видавця: {publisher.Name}");
+
+                    // Створюємо список книг
+                    var tasks = new List<Task>();
+                    for (int i = 1; i <= 5; i++)
+                    {
+                        var book = new BookModel
+                        {
+                            Id = Guid.NewGuid(),
+                            Title = $"Лабораторна робота №{i} (C# .NET)",
+                            Author = "Олег Чураков",
+                            PageCount = 100 + (i * 25),
+                            YearPublished = 2026,
+                            ISBN = $"ISBN-NUPP-{1000 + i}",
+                            PublisherId = publisher.Id // Прив'язка до видавця
+                        };
+                        tasks.Add(bookService.CreateAsync(book));
+                    }
+
+                    await Task.WhenAll(tasks);
+                    Console.WriteLine("Тестові книги успішно додано до бази.");
+
+                    // Оновлюємо список для виводу
+                    allExisting = await bookService.ReadAllAsync();
+                }
+
+                // 4. Вивід результатів у консоль
+                Console.WriteLine($"\nУ базі знайдено книг: {allExisting.Count()}");
+                Console.WriteLine("--------------------------------------------------");
+                foreach (var b in allExisting)
+                {
+                    Console.WriteLine($"ID: {b.Id.ToString().Substring(0, 8)}... | {b.Title} | Автор: {b.Author}");
+                }
+                Console.WriteLine("--------------------------------------------------");
+
+                // 5. Простий LINQ аналіз
+                if (allExisting.Any())
+                {
+                    var avgPages = allExisting.Average(x => x.PageCount);
+                    Console.WriteLine($"\nСтатистика: Середня кількість сторінок — {avgPages:F1}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"\nКритична помилка: {ex.Message}");
+                if (ex.InnerException != null)
+                    Console.WriteLine($"Деталі: {ex.InnerException.Message}");
             }
 
-            // Чекаємо завершення всіх потоків
-            await Task.WhenAll(tasks);
-
-            Console.WriteLine($"Успішно створено об'єктів: {(await bookService.ReadAllAsync()).Count()}");
-
-            // 3. LINQ АНАЛІЗ (Вимога завдання: мін/макс/середнє)
-            var allBooks = await bookService.ReadAllAsync();
-
-            // Знаходимо книгу з найбільшою кількістю сторінок
-            var maxPages = allBooks.Max(b => b.PageCount);
-            // Знаходимо середню кількість сторінок
-            var avgPages = allBooks.Average(b => b.PageCount);
-            // Знаходимо найдавнішу книгу
-            var oldestYear = allBooks.Min(b => b.YearPublished);
-
-            Console.WriteLine("\n--- Аналіз даних через LINQ ---");
-            Console.WriteLine($"Максимальна кількість сторінок: {maxPages}");
-            Console.WriteLine($"Середня кількість сторінок: {avgPages:F2}");
-            Console.WriteLine($"Найдавніший рік видання: {oldestYear}");
-
-            // 4. ПАГІНАЦІЯ (Вивід по 5 елементів)
-            Console.WriteLine("\n--- Тест пагінації (Сторінка 1, перші 5 книг) ---");
-            var page1 = await bookService.ReadAllAsync(page: 1, amount: 5);
-            foreach (var book in page1)
-            {
-                Console.WriteLine($"ID: {book.Id.ToString().Substring(0, 8)}... | Назва: {book.Title} | Сторінок: {book.PageCount}");
-            }
-
-            // 5. ЗБЕРЕЖЕННЯ ТА ЗАВАНТАЖЕННЯ (Асинхронно)
-            string path = "library_data.json";
-            Console.WriteLine($"\nЗбереження даних у файл {path}...");
-            await bookService.SaveAsync(path);
-
-            Console.WriteLine("Завантаження даних назад...");
-            await bookService.LoadAsync(path);
-
-            Console.WriteLine("\nПрограма завершила роботу. Натисніть будь-яку клавішу...");
+            Console.WriteLine("\nНатисніть будь-яку клавішу для завершення...");
             Console.ReadKey();
         }
     }

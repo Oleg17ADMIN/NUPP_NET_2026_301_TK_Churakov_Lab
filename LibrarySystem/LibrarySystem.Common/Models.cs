@@ -1,32 +1,25 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis; // Додано для [SetsRequiredMembers]
 
 namespace LibrarySystem.Common
 {
-    // Інтерфейс для забезпечення наявності Id у всіх сутностей
-    public interface IEntity
-    {
-        Guid Id { get; set; }
-    }
-
-    // Делегати та Події [Конструкція з вимог]
+    // Делегати та Події
     public delegate void ItemActionHandler(string message);
 
     public abstract class LibraryItem : IEntity
     {
         public Guid Id { get; set; }
-        public string Title { get; set; }
+        public required string Title { get; set; }
         public int YearPublished { get; set; }
 
-        // Статичні поля [Конструкція з вимог]
         public static int TotalItemsCreated;
 
-        // Статичні конструктори [Конструкція з вимог]
         static LibraryItem()
         {
             TotalItemsCreated = 0;
         }
 
-        // Конструктори [Конструкція з вимог]
+        [SetsRequiredMembers] // Повідомляємо компілятору, що конструктор встановлює required поля
         protected LibraryItem(string title, int year)
         {
             Id = Guid.NewGuid();
@@ -35,17 +28,14 @@ namespace LibrarySystem.Common
             TotalItemsCreated++;
         }
 
-        // Події [Конструкція з вимог]
-        public static event ItemActionHandler OnItemCreated;
+        public static event ItemActionHandler? OnItemCreated;
 
-        // Методи [Конструкція з вимог]
         public virtual void DisplayInfo()
         {
             Console.WriteLine($"Item: {Title}, Year: {YearPublished}");
             OnItemCreated?.Invoke($"Created: {Title}");
         }
 
-        // Статичний метод [Конструкція з вимог]
         public static int GetTotalCount()
         {
             return TotalItemsCreated;
@@ -54,13 +44,13 @@ namespace LibrarySystem.Common
 
     public class Book : LibraryItem
     {
-        public string Author { get; set; }
+        public required string Author { get; set; }
         public int PageCount { get; set; }
-        public string ISBN { get; set; }
+        public required string ISBN { get; set; }
 
-        // Додаємо об'єкт Random для генерації даних
         private static readonly Random _random = new Random();
 
+        [SetsRequiredMembers]
         public Book(string title, int year, string author, int pageCount, string isbn)
             : base(title, year)
         {
@@ -75,14 +65,13 @@ namespace LibrarySystem.Common
             base.DisplayInfo();
         }
 
-        // Статичний метод для створення об'єкта зі згенерованими даними
         public static Book CreateNew()
         {
             return new Book(
                 $"Книга_Автогенерація_{_random.Next(1, 10000)}",
                 _random.Next(1900, 2024),
                 $"Автор_{_random.Next(1, 100)}",
-                _random.Next(50, 1000), // Це цифрове значення ми потім будемо аналізувати через LINQ
+                _random.Next(50, 1000),
                 $"ISBN-{_random.Next(1000, 9999)}"
             );
         }
@@ -91,11 +80,12 @@ namespace LibrarySystem.Common
     public class Magazine : LibraryItem
     {
         public int IssueNumber { get; set; }
-        public string Publisher { get; set; }
-        public string Category { get; set; }
+        public required string Publisher { get; set; }
+        public required string Category { get; set; }
 
         private static readonly Random _random = new Random();
 
+        [SetsRequiredMembers]
         public Magazine(string title, int year, int issueNumber, string publisher, string category)
             : base(title, year)
         {
@@ -104,7 +94,6 @@ namespace LibrarySystem.Common
             Category = category;
         }
 
-        // Статичний метод для створення об'єкта зі згенерованими даними
         public static Magazine CreateNew()
         {
             return new Magazine(
@@ -120,8 +109,8 @@ namespace LibrarySystem.Common
     public class Member : IEntity
     {
         public Guid Id { get; set; }
-        public string FullName { get; set; }
-        public string Email { get; set; }
+        public required string FullName { get; set; }
+        public required string Email { get; set; }
         public DateTime RegistrationDate { get; set; }
 
         public Member()
@@ -131,7 +120,6 @@ namespace LibrarySystem.Common
         }
     }
 
-    // Метод розширення [Конструкція з вимог]
     public static class StringExtensions
     {
         public static string ToConsoleFormat(this string str)
