@@ -2,15 +2,13 @@
 using LibrarySystem.Infrastructure.Models;
 using LibrarySystem.Infrastructure.Services;
 using LibrarySystem.REST.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 
 namespace LibrarySystem.REST.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")] // Шлях до API: api/books
+    [Route("api/[controller]")]
+    [Authorize] // Тільки для авторизованих користувачів
     public class BooksController : ControllerBase
     {
         private readonly LibraryServiceAsync<BookModel> _bookService;
@@ -20,8 +18,8 @@ namespace LibrarySystem.REST.Controllers
             _bookService = bookService;
         }
 
-        // 1. Отримати всі книги (READ ALL)
         [HttpGet]
+        [AllowAnonymous] // Дозволяємо перегляд без логіну
         public async Task<ActionResult<IEnumerable<BookDto>>> GetBooks()
         {
             var books = await _bookService.ReadAllAsync();
@@ -34,36 +32,11 @@ namespace LibrarySystem.REST.Controllers
                 YearPublished = b.YearPublished,
                 ISBN = b.ISBN
             });
-
-            return Ok(dtos); // Повертає 200 OK
+            return Ok(dtos);
         }
 
-        // 2. Отримати книгу за ID (READ ONE)
-        [HttpGet("{id}")]
-        public async Task<ActionResult<BookDto>> GetBook(Guid id)
-        {
-            var book = await _bookService.ReadAsync(id);
-
-            if (book == null)
-            {
-                return NotFound(); // Повертає 404 Not Found
-            }
-
-            var dto = new BookDto
-            {
-                Id = book.Id,
-                Title = book.Title,
-                Author = book.Author,
-                PageCount = book.PageCount,
-                YearPublished = book.YearPublished,
-                ISBN = book.ISBN
-            };
-
-            return Ok(dto);
-        }
-
-        // 3. Створити нову книгу (CREATE)
         [HttpPost]
+        [Authorize(Roles = "Admin")] // Тільки Адмін може додавати
         public async Task<ActionResult<BookDto>> PostBook(BookDto bookDto)
         {
             var book = new BookModel
@@ -77,21 +50,19 @@ namespace LibrarySystem.REST.Controllers
             };
 
             await _bookService.CreateAsync(book);
-
             bookDto.Id = book.Id;
-            // Повертає 201 Created і посилання на метод GetBook
-            return CreatedAtAction(nameof(GetBook), new { id = book.Id }, bookDto);
+            return CreatedAtAction(nameof(GetBooks), new { id = book.Id }, bookDto);
         }
 
-        // 4. Видалити книгу (DELETE)
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")] // Тільки Адмін може видаляти
         public async Task<IActionResult> DeleteBook(Guid id)
         {
             var book = await _bookService.ReadAsync(id);
             if (book == null) return NotFound();
 
             await _bookService.DeleteAsync(id);
-            return NoContent(); // Повертає 204 No Content
+            return NoContent();
         }
     }
 }
